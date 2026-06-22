@@ -77,7 +77,18 @@ export default function Schedule() {
       return
     }
     setSelectedAppointmentId(appointmentId)
-    navigate(`/patient/${patientId}/confirm?appointment=${appointmentId}`)
+
+    if (status === 'waiting' || status === 'in_progress') {
+      navigate(`/patient/${patientId}/confirm?appointment=${appointmentId}`)
+    } else if (status === 'treatment_completed') {
+      navigate(`/patient/${patientId}/voucher?appointment=${appointmentId}`)
+    } else if (status === 'voucher_deducted') {
+      navigate(`/patient/${patientId}/post-op?appointment=${appointmentId}`)
+    } else if (status === 'to_front_desk') {
+      navigate(`/patient/${patientId}/voucher?appointment=${appointmentId}`)
+    } else {
+      navigate(`/patient/${patientId}/confirm?appointment=${appointmentId}`)
+    }
   }
 
   return (

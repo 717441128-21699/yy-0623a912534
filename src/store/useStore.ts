@@ -33,6 +33,7 @@ const useStore = create<{
   updateException: (id: string, updates: Partial<Exception>) => void
   useVoucher: (voucherId: string) => void
   addVerificationRecord: (record: VerificationRecord) => void
+  updateVerificationRecord: (id: string, updates: Partial<VerificationRecord>) => void
   getVerificationByAppointmentId: (appointmentId: string) => VerificationRecord | undefined
   getVerificationById: (id: string) => VerificationRecord | undefined
   getTreatmentRecordByAppointmentId: (appointmentId: string) => TreatmentRecord | undefined
@@ -122,6 +123,14 @@ const useStore = create<{
   addVerificationRecord(record) {
     set((state) => ({
       verificationRecords: [...state.verificationRecords, record],
+    }))
+  },
+
+  updateVerificationRecord(id, updates) {
+    set((state) => ({
+      verificationRecords: state.verificationRecords.map((v) =>
+        v.id === id ? { ...v, ...updates } : v
+      ),
     }))
   },
 

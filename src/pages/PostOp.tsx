@@ -65,7 +65,7 @@ export default function PostOp() {
   const updateTreatmentRecord = useStore((s) => s.updateTreatmentRecord)
   const updateAppointmentStatus = useStore((s) => s.updateAppointmentStatus)
   const getVouchersByPatientId = useStore((s) => s.getVouchersByPatientId)
-  const addVerificationRecord = useStore((s) => s.addVerificationRecord)
+  const updateVerificationRecord = useStore((s) => s.updateVerificationRecord)
 
   const patient = getPatientById(patientId!)
   const appointment = getAppointmentById(appointmentId)
@@ -116,8 +116,7 @@ export default function PostOp() {
     if (!record) return
     updateTreatmentRecord(record.id, { postOpConfirmed: true })
     if (verification) {
-      addVerificationRecord({
-        ...verification,
+      updateVerificationRecord(verification.id, {
         patientConfirmed: true,
         patientConfirmedAt: new Date().toISOString(),
       })

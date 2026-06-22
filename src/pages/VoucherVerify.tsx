@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { format } from 'date-fns'
+import { zhCN } from 'date-fns/locale'
 import {
   ArrowLeft,
   CreditCard,
@@ -14,6 +16,7 @@ import {
   Minus,
   ArrowRight,
   Printer,
+  Clock,
 } from 'lucide-react'
 import useStore from '@/store/useStore'
 import { cn } from '@/lib/utils'
@@ -53,6 +56,10 @@ export default function VoucherVerify() {
     (s) => s.getTreatmentRecordByAppointmentId
   )
   const addVerificationRecord = useStore((s) => s.addVerificationRecord)
+  const updateVerificationRecord = useStore((s) => s.updateVerificationRecord)
+  const getVerificationByAppointmentId = useStore(
+    (s) => s.getVerificationByAppointmentId
+  )
   const updateAppointmentStatus = useStore((s) => s.updateAppointmentStatus)
   const currentStaff = useStore((s) => s.currentStaff)
 
@@ -60,6 +67,7 @@ export default function VoucherVerify() {
   const appointment = getAppointmentById(appointmentId)
   const vouchers = getVouchersByPatientId(patientId!)
   const existingRecord = getTreatmentRecordByAppointmentId(appointmentId)
+  const existingVerification = getVerificationByAppointmentId(appointmentId)
 
   const actualProject =
     existingRecord?.actualProject ?? appointment?.projectName ?? ''
@@ -86,32 +94,63 @@ export default function VoucherVerify() {
     'change_item' | 'price_diff' | 'to_front_desk' | null
   >(null)
 
+  useEffect(() => {
+    if (existingVerification) {
+      setVerified(true)
+      setPatientConfirmed(existingVerification.patientConfirmed)
+      setUsedVoucherData({
+        before: existingVerification.sessionsBefore,
+        after: existingVerification.sessionsAfter,
+        voucher: {
+          id: existingVerification.voucherId,
+          name: existingVerification.voucherName,
+          type: existingVerification.voucherType,
+          patientId: patientId!,
+          totalSessions: existingVerification.sessionsBefore + (existingVerification.treatmentType === 'to_front_desk' ? 0 : existingVerification.sessionsUsed),
+          usedSessions: existingVerification.sessionsBefore + existingVerification.sessionsUsed - existingVerification.sessionsAfter,
+          remainingSessions: existingVerification.sessionsAfter,
+          expiryDate: '',
+          applicableProjects: [],
+        },
+        treatmentType: existingVerification.treatmentType,
+        verificationId: existingVerification.id,
+        traceNo: existingVerification.traceNo,
+      })
+    }
+  }, [existingVerification, patientId])
+
   const selectedVoucher = vouchers.find((v) => v.id === selectedVoucherId)
 
   const todayStr = new Date().toISOString().split('T')[0]
 
   const voucherAnalysis = useMemo(() => {
+    const allApplicable = vouchers.filter((v) =>
+      v.applicableProjects.includes(actualProject)
+    )
     const available = vouchers.filter(
       (v) => v.remainingSessions > 0 && v.expiryDate >= todayStr
     )
-    const applicable = available.filter((v) =>
-      v.applicableProjects.includes(actualProject)
+    const applicable = allApplicable.filter((v) =>
+      v.remainingSessions > 0 && v.expiryDate >= todayStr
     )
-    const expired = vouchers.filter((v) => v.expiryDate < todayStr)
-    const usedUp = vouchers.filter(
+    const expired = allApplicable.filter((v) => v.expiryDate < todayStr)
+    const usedUp = allApplicable.filter(
       (v) => v.remainingSessions === 0 && v.expiryDate >= todayStr
     )
-
-    const insufficient = applicable.filter(
-      (v) => v.remainingSessions < 1
+    const allExpired = vouchers.filter((v) => v.expiryDate < todayStr)
+    const allUsedUp = vouchers.filter(
+      (v) => v.remainingSessions === 0 && v.expiryDate >= todayStr
     )
 
     return {
       hasAvailable: available.length > 0,
       hasApplicable: applicable.length > 0,
-      expiredCount: expired.length,
-      usedUpCount: usedUp.length,
-      insufficientCount: insufficient.length,
+      expiredCount: allExpired.length,
+      usedUpCount: allUsedUp.length,
+      applicableExpiredCount: expired.length,
+      applicableUsedUpCount: usedUp.length,
+      hasInsufficientIssue: allApplicable.length > 0 && applicable.length === 0,
+      hasNoVoucherAtAll: allApplicable.length === 0,
       applicableVouchers: applicable,
     }
   }, [vouchers, actualProject, todayStr])
@@ -154,6 +193,7 @@ export default function VoucherVerify() {
 
   const handleConfirmVerify = () => {
     if (!selectedVoucher) return
+    if (existingVerification) return
 
     if (!selectedVoucher.applicableProjects.includes(actualProject)) {
       setShowMismatchModal(true)
@@ -306,8 +346,7 @@ export default function VoucherVerify() {
       .getState()
       .getVerificationByAppointmentId(appointmentId)
     if (verification) {
-      addVerificationRecord({
-        ...verification,
+      updateVerificationRecord(verification.id, {
         patientConfirmed: true,
         patientConfirmedAt: new Date().toISOString(),
       })
@@ -322,6 +361,15 @@ export default function VoucherVerify() {
   const handlePrintVoucher = () => {
     setShowVoucherModal(false)
     alert('核销凭证已发送至打印机')
+  }
+
+  const formatDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '—'
+    try {
+      return format(new Date(dateStr), 'yyyy-MM-dd HH:mm', { locale: zhCN })
+    } catch {
+      return '—'
+    }
   }
 
   if (!patient) return null
@@ -382,9 +430,15 @@ export default function VoucherVerify() {
               )}
             </div>
           )}
+          {existingRecord?.endTime && (
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+              <Clock className="w-3.5 h-3.5" />
+              <span>治疗完成时间：{formatDate(existingRecord.endTime)}</span>
+            </div>
+          )}
         </div>
 
-        {!voucherAnalysis.hasApplicable && (
+        {voucherAnalysis.hasNoVoucherAtAll && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -397,13 +451,9 @@ export default function VoucherVerify() {
                   无适用卡券
                 </p>
                 <p className="text-xs text-coral-600 mb-3">
-                  未找到「{actualProject}」对应的可用卡券，顾客名下共有 {vouchers.length} 张卡券，其中{voucherAnalysis.applicableVouchers.length > 0 ? `${voucherAnalysis.applicableVouchers.length}张适用但` : ''}
-                  {voucherAnalysis.usedUpCount > 0
-                    ? `${voucherAnalysis.usedUpCount}张次数用完、`
-                    : ''}
-                  {voucherAnalysis.expiredCount > 0
-                    ? `${voucherAnalysis.expiredCount}张已过期`
-                    : '无适用项目'}
+                  未找到「{actualProject}」对应的可用卡券，顾客名下共有 {vouchers.length} 张卡券，均不适用于当前治疗项目
+                  {voucherAnalysis.usedUpCount > 0 && `，${voucherAnalysis.usedUpCount}张次数用完`}
+                  {voucherAnalysis.expiredCount > 0 && `，${voucherAnalysis.expiredCount}张已过期`}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -436,7 +486,7 @@ export default function VoucherVerify() {
           </motion.div>
         )}
 
-        {voucherAnalysis.insufficientCount > 0 && (
+        {voucherAnalysis.hasInsufficientIssue && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -446,23 +496,39 @@ export default function VoucherVerify() {
               <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-semibold text-amber-700 mb-1">
-                  卡券次数不足
+                  卡券不可用
                 </p>
                 <p className="text-xs text-amber-600 mb-3">
-                  有 {voucherAnalysis.insufficientCount} 张适用卡券次数不足
+                  「{actualProject}」有适用卡券但不可使用
+                  {voucherAnalysis.applicableUsedUpCount > 0 && `：${voucherAnalysis.applicableUsedUpCount}张次数用完`}
+                  {voucherAnalysis.applicableExpiredCount > 0 && `：${voucherAnalysis.applicableExpiredCount}张已过期`}
                 </p>
-                <button
-                  onClick={() =>
-                    handleQuickException(
-                      'voucher_insufficient',
-                      `${actualProject}卡券次数不足`
-                    )
-                  }
-                  className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition-colors"
-                >
-                  <Flag className="w-3 h-3 inline mr-1" />
-                  卡券不足上报
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() =>
+                      handleQuickException(
+                        'voucher_insufficient',
+                        `${actualProject}卡券次数不足`
+                      )
+                    }
+                    className="px-3 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition-colors"
+                  >
+                    <Flag className="w-3 h-3 inline mr-1" />
+                    卡券不足上报
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleQuickException(
+                        'no_voucher_in_system',
+                        `卡券${voucherAnalysis.applicableUsedUpCount > 0 ? '次数用完' : ''}${voucherAnalysis.applicableExpiredCount > 0 ? '、已过期' : ''}`
+                      )
+                    }
+                    className="px-3 py-1.5 bg-white border border-amber-300 text-amber-700 text-xs font-medium rounded-lg hover:bg-amber-50 transition-colors"
+                  >
+                    <Flag className="w-3 h-3 inline mr-1" />
+                    上报异常
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
