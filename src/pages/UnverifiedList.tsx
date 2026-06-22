@@ -10,12 +10,18 @@ import {
   Clock,
   User,
   Tag,
+  ArrowLeftRight,
+  AlertTriangle,
+  Send,
+  Stethoscope,
+  Syringe,
+  FileText,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import useStore from '@/store/useStore'
 import { cn } from '@/lib/utils'
-import type { Appointment, AppointmentStatus, TreatmentRecord, VerificationRecord, Voucher, Patient } from '@/types'
+import type { Appointment, AppointmentStatus, TreatmentRecord, VerificationRecord, Voucher, Patient, SupervisorReviewResult, FrontDeskResultType, Staff } from '@/types'
 
 const roomLabel: Record<string, string> = {
   skin_treatment: '皮肤科治疗室',
@@ -58,6 +64,19 @@ const treatmentTypeLabel: Record<string, { label: string; className: string }> =
   to_front_desk: { label: '转前台', className: 'bg-orange-500/10 text-orange-600' },
 }
 
+const frontDeskResultLabel: Record<string, string> = {
+  supplement_deduct: '补扣卡券',
+  price_diff: '补差价',
+  change_item: '改项处理',
+  void: '作废',
+}
+
+const supervisorReviewLabel: Record<string, { label: string; className: string }> = {
+  approved: { label: '复核通过', className: 'bg-green-500/10 text-green-600' },
+  returned: { label: '退回补术后', className: 'bg-amber-500/10 text-amber-600' },
+  to_front_desk: { label: '转前台处理', className: 'bg-orange-500/10 text-orange-600' },
+}
+
 export default function UnverifiedList() {
   const appointments = useStore((s) => s.appointments)
   const getPatientById = useStore((s) => s.getPatientById)
@@ -66,6 +85,10 @@ export default function UnverifiedList() {
   const getVerificationByAppointmentId = useStore((s) => s.getVerificationByAppointmentId)
   const updateTreatmentRecord = useStore((s) => s.updateTreatmentRecord)
   const getVoucherById = useStore((s) => s.getVoucherById)
+  const reviewVerification = useStore((s) => s.reviewVerification)
+  const processFrontDeskResult = useStore((s) => s.processFrontDeskResult)
+  const getTimelineByAppointmentId = useStore((s) => s.getTimelineByAppointmentId)
+  const currentStaff = useStore((s) => s.currentStaff)
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeFilter, setActiveFilter] = useState<AppointmentStatus | 'all'>('all')
@@ -295,7 +318,11 @@ export default function UnverifiedList() {
             getTreatmentRecordByAppointmentId={getTreatmentRecordByAppointmentId}
             getVerificationByAppointmentId={getVerificationByAppointmentId}
             getVoucherById={getVoucherById}
+            getTimelineByAppointmentId={getTimelineByAppointmentId}
+            reviewVerification={reviewVerification}
+            processFrontDeskResult={processFrontDeskResult}
             formatDate={formatDate}
+            currentStaff={currentStaff}
           />
         )}
       </AnimatePresence>
@@ -310,7 +337,11 @@ interface DetailModalProps {
   getTreatmentRecordByAppointmentId: (id: string) => TreatmentRecord | undefined
   getVerificationByAppointmentId: (id: string) => VerificationRecord | undefined
   getVoucherById: (id: string) => Voucher | undefined
+  getTimelineByAppointmentId: (id: string) => Array<{ key: string; label: string; time?: string; status: 'done' | 'pending' | 'current' }>
+  reviewVerification: (verificationId: string, result: SupervisorReviewResult, note?: string) => void
+  processFrontDeskResult: (verificationId: string, resultType: FrontDeskResultType, note?: string) => void
   formatDate: (isoDate: string) => string
+  currentStaff: Staff | null
 }
 
 function DetailModal({
@@ -320,12 +351,40 @@ function DetailModal({
   getTreatmentRecordByAppointmentId,
   getVerificationByAppointmentId,
   getVoucherById,
+  getTimelineByAppointmentId,
+  reviewVerification,
+  processFrontDeskResult,
   formatDate,
 }: DetailModalProps) {
   const patient = getPatientById(appointment.patientId)
   const treatment = getTreatmentRecordByAppointmentId(appointment.id)
   const verification = getVerificationByAppointmentId(appointment.id)
   const voucher = verification?.voucherId ? getVoucherById(verification.voucherId) : undefined
+  const timeline = getTimelineByAppointmentId(appointment.id)
+
+  const [showReviewActions, setShowReviewActions] = useState(false)
+  const [reviewNote, setReviewNote] = useState('')
+  const [showFrontDeskForm, setShowFrontDeskForm] = useState(false)
+  const [frontDeskResultType, setFrontDeskResultType] = useState<FrontDeskResultType | null>(null)
+  const [frontDeskResultNote, setFrontDeskResultNote] = useState('')
+
+  const canReview = verification && appointment.status === 'voucher_deducted'
+  const canProcessFrontDesk = verification && appointment.status === 'to_front_desk' && !verification.frontDeskProcessed
+
+  const handleReview = (result: SupervisorReviewResult) => {
+    if (!verification) return
+    reviewVerification(verification.id, result, reviewNote || undefined)
+    setShowReviewActions(false)
+    setReviewNote('')
+  }
+
+  const handleFrontDeskProcess = () => {
+    if (!verification || !frontDeskResultType) return
+    processFrontDeskResult(verification.id, frontDeskResultType, frontDeskResultNote || undefined)
+    setShowFrontDeskForm(false)
+    setFrontDeskResultType(null)
+    setFrontDeskResultNote('')
+  }
 
   return (
     <motion.div
@@ -359,7 +418,7 @@ function DetailModal({
               <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
                 <User className="w-5 h-5 text-primary-600" />
               </div>
-              <div>
+              <div className="flex-1">
                 <div className="font-semibold text-gray-800">
                   {patient?.name ?? '未知顾客'}
                 </div>
@@ -367,39 +426,73 @@ function DetailModal({
                   {appointment.projectName} · {roomLabel[appointment.room] ?? appointment.room}
                 </div>
               </div>
+              <span className={cn(
+                'text-[10px] px-2 py-0.5 rounded-full font-medium',
+                statusConfig[appointment.status]?.className
+              )}>
+                {statusConfig[appointment.status]?.label}
+              </span>
             </div>
 
-            {treatment && (
-              <div className="p-4 border border-warm-200 rounded-xl">
-                <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-primary-500" />
-                  治疗时间
-                </h3>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <div className="text-gray-500 mb-1">开始时间</div>
-                    <div className="font-medium text-gray-800">
-                      {formatDate(treatment.startTime)}
+            <div className="p-4 border border-warm-200 rounded-xl">
+              <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-primary-500" />
+                完整流程时间线
+              </h3>
+              <div className="relative pl-8">
+                {timeline.map((item, idx) => (
+                  <div key={item.key} className="relative pb-4 last:pb-0">
+                    {idx < timeline.length - 1 && (
+                      <div className={cn(
+                        "absolute left-[-1.25rem] top-5 bottom-0 w-0.5",
+                        item.status === 'done' ? 'bg-primary-300' : 'bg-warm-200'
+                      )} />
+                    )}
+                    <div className={cn(
+                      "absolute left-[-1.625rem] top-0 w-6 h-6 rounded-full flex items-center justify-center",
+                      item.status === 'done' && 'bg-primary-500',
+                      item.status === 'current' && 'bg-amber-500 ring-4 ring-amber-200',
+                      item.status === 'pending' && 'bg-gray-200'
+                    )}>
+                      {item.status === 'done' ? (
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      ) : item.status === 'current' ? (
+                        <Clock className="w-3 h-3 text-white" />
+                      ) : (
+                        <div className="w-2 h-2 rounded-full bg-gray-400" />
+                      )}
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className={cn(
+                        "text-sm font-medium",
+                        item.status === 'done' && 'text-gray-700',
+                        item.status === 'current' && 'text-amber-700 font-semibold',
+                        item.status === 'pending' && 'text-gray-400'
+                      )}>
+                        {item.label}
+                      </span>
+                      <span className={cn(
+                        "text-xs font-mono",
+                        item.status === 'done' && 'text-gray-500',
+                        item.status === 'current' && 'text-amber-600',
+                        item.status === 'pending' && 'text-gray-300'
+                      )}>
+                        {item.time ? formatDate(item.time) : '待完成'}
+                      </span>
                     </div>
                   </div>
-                  <div>
-                    <div className="text-gray-500 mb-1">结束时间</div>
-                    <div className="font-medium text-gray-800">
-                      {formatDate(treatment.endTime)}
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
-            )}
+            </div>
 
             {verification ? (
               <div className="space-y-4">
                 <div className="p-4 border border-green-200 bg-green-50/50 rounded-xl">
                   <h3 className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
                     <FileCheck className="w-4 h-4" />
-                    核销记录
+                    核销凭证
                   </h3>
-                  <div className="space-y-3 text-sm">
+                  <div className="space-y-2.5 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-500">核销流水号</span>
                       <span className="font-mono font-medium text-gray-800">{verification.traceNo}</span>
@@ -430,12 +523,12 @@ function DetailModal({
                         {treatmentTypeLabel[verification.treatmentType]?.label}
                       </span>
                     </div>
-                    <div className="border-t border-green-200 pt-3">
-                      <div className="flex justify-between mb-2">
+                    <div className="border-t border-green-200 pt-2.5 mt-2.5">
+                      <div className="flex justify-between mb-1.5">
                         <span className="text-gray-500">核销前次数</span>
                         <span className="font-medium text-gray-800">{verification.sessionsBefore} 次</span>
                       </div>
-                      <div className="flex justify-between mb-2">
+                      <div className="flex justify-between mb-1.5">
                         <span className="text-gray-500">本次使用</span>
                         <span className="font-medium text-red-600">- {verification.sessionsUsed} 次</span>
                       </div>
@@ -444,7 +537,7 @@ function DetailModal({
                         <span className="font-semibold text-primary-600">{verification.sessionsAfter} 次</span>
                       </div>
                     </div>
-                    {verification.priceDiffAmount !== undefined && (
+                    {verification.priceDiffAmount !== undefined && verification.priceDiffAmount > 0 && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">补差价金额</span>
                         <span className="font-medium text-red-600">¥{verification.priceDiffAmount}</span>
@@ -452,41 +545,262 @@ function DetailModal({
                     )}
                     {verification.changeItemNote && (
                       <div>
-                        <div className="text-gray-500 mb-1">换项目说明</div>
-                        <div className="p-2 bg-white rounded-lg text-gray-700">
+                        <div className="text-gray-500 mb-1">改项说明</div>
+                        <div className="p-2 bg-white rounded-lg text-gray-700 text-sm">
                           {verification.changeItemNote}
                         </div>
                       </div>
                     )}
                     {verification.frontDeskNote && (
                       <div>
-                        <div className="text-gray-500 mb-1">前台备注</div>
-                        <div className="p-2 bg-white rounded-lg text-gray-700">
+                        <div className="text-gray-500 mb-1">转前台备注</div>
+                        <div className="p-2 bg-white rounded-lg text-gray-700 text-sm">
                           {verification.frontDeskNote}
                         </div>
                       </div>
                     )}
-                    <div className="flex justify-between items-center pt-2">
-                      <span className="text-gray-500">顾客确认</span>
-                      <span className={cn(
-                        'text-sm font-medium flex items-center gap-1',
-                        verification.patientConfirmed ? 'text-green-600' : 'text-orange-600'
-                      )}>
+                    <div className="border-t border-green-200 pt-2.5 mt-2.5 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500">核销时间</span>
+                        <span className="font-medium text-gray-700">
+                          {formatDate(verification.verifiedAt)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500">顾客确认</span>
                         {verification.patientConfirmed ? (
-                          <><Check className="w-4 h-4" /> 已确认</>
+                          <div className="text-right">
+                            <span className="text-green-600 font-medium flex items-center gap-1 justify-end">
+                              <Check className="w-4 h-4" />
+                              已确认
+                            </span>
+                            {verification.patientConfirmedAt && (
+                              <span className="text-xs text-gray-400 block mt-0.5">
+                                {formatDate(verification.patientConfirmedAt)}
+                              </span>
+                            )}
+                          </div>
                         ) : (
-                          '待确认'
+                          <span className="text-orange-600 font-medium">待确认</span>
                         )}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">核销时间</span>
-                      <span className="font-medium text-gray-800">
-                        {formatDate(verification.verifiedAt)}
-                      </span>
+                      </div>
                     </div>
                   </div>
                 </div>
+
+                {verification.supervisorReviewed && (
+                  <div className="p-4 border border-purple-200 bg-purple-50/50 rounded-xl">
+                    <h3 className="text-sm font-semibold text-purple-800 mb-3 flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4" />
+                      主管复核
+                    </h3>
+                    <div className="space-y-2.5 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500">复核结果</span>
+                        <span className={cn(
+                          'text-xs px-2 py-0.5 rounded-full font-medium',
+                          supervisorReviewLabel[verification.supervisorReviewResult ?? '']?.className
+                        )}>
+                          {supervisorReviewLabel[verification.supervisorReviewResult ?? '']?.label ?? '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">复核人</span>
+                        <span className="font-medium text-gray-800">{verification.supervisorName ?? '—'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">复核时间</span>
+                        <span className="font-medium text-gray-700">
+                          {verification.supervisorReviewedAt ? formatDate(verification.supervisorReviewedAt) : '—'}
+                        </span>
+                      </div>
+                      {verification.supervisorReviewNote && (
+                        <div>
+                          <div className="text-gray-500 mb-1">复核备注</div>
+                          <div className="p-2 bg-white rounded-lg text-gray-700 text-sm">
+                            {verification.supervisorReviewNote}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {verification.frontDeskProcessed && (
+                  <div className="p-4 border border-orange-200 bg-orange-50/50 rounded-xl">
+                    <h3 className="text-sm font-semibold text-orange-800 mb-3 flex items-center gap-2">
+                      <ArrowLeftRight className="w-4 h-4" />
+                      前台处理结果
+                    </h3>
+                    <div className="space-y-2.5 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500">处理方式</span>
+                        <span className="font-medium text-orange-700">
+                          {frontDeskResultLabel[verification.frontDeskResultType ?? ''] ?? '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">处理人</span>
+                        <span className="font-medium text-gray-800">
+                          {verification.frontDeskProcessedByName ?? '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">处理时间</span>
+                        <span className="font-medium text-gray-700">
+                          {verification.frontDeskProcessedAt ? formatDate(verification.frontDeskProcessedAt) : '—'}
+                        </span>
+                      </div>
+                      {verification.frontDeskResultNote && (
+                        <div>
+                          <div className="text-gray-500 mb-1">处理说明</div>
+                          <div className="p-2 bg-white rounded-lg text-gray-700 text-sm">
+                            {verification.frontDeskResultNote}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {canReview && !verification.supervisorReviewed && !showReviewActions && (
+                  <button
+                    onClick={() => setShowReviewActions(true)}
+                    className="w-full py-3 rounded-xl bg-purple-500 text-white font-semibold hover:bg-purple-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" />
+                    主管复核处理
+                  </button>
+                )}
+
+                {canReview && !verification.supervisorReviewed && showReviewActions && (
+                  <div className="p-4 border border-purple-200 bg-purple-50/50 rounded-xl space-y-3">
+                    <h3 className="text-sm font-semibold text-purple-800 flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4" />
+                      主管复核
+                    </h3>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        复核备注（可选）
+                      </label>
+                      <textarea
+                        value={reviewNote}
+                        onChange={(e) => setReviewNote(e.target.value)}
+                        placeholder="请输入复核备注..."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => handleReview('approved')}
+                        className="py-2 rounded-lg bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors flex flex-col items-center gap-1"
+                      >
+                        <Check className="w-4 h-4" />
+                        通过
+                      </button>
+                      <button
+                        onClick={() => handleReview('returned')}
+                        className="py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition-colors flex flex-col items-center gap-1"
+                      >
+                        <Send className="w-4 h-4" />
+                        退回补术后
+                      </button>
+                      <button
+                        onClick={() => handleReview('to_front_desk')}
+                        className="py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors flex flex-col items-center gap-1"
+                      >
+                        <ArrowLeftRight className="w-4 h-4" />
+                        转前台
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowReviewActions(false)
+                        setReviewNote('')
+                      }}
+                      className="w-full py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition-colors"
+                    >
+                      取消
+                    </button>
+                  </div>
+                )}
+
+                {canProcessFrontDesk && !showFrontDeskForm && (
+                  <button
+                    onClick={() => setShowFrontDeskForm(true)}
+                    className="w-full py-3 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeftRight className="w-4 h-4" />
+                    前台处理结果回填
+                  </button>
+                )}
+
+                {canProcessFrontDesk && showFrontDeskForm && (
+                  <div className="p-4 border border-orange-200 bg-orange-50/50 rounded-xl space-y-3">
+                    <h3 className="text-sm font-semibold text-orange-800 flex items-center gap-2">
+                      <ArrowLeftRight className="w-4 h-4" />
+                      前台处理结果
+                    </h3>
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        处理方式
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['supplement_deduct', 'price_diff', 'change_item', 'void'] as FrontDeskResultType[]).map((type) => (
+                          <button
+                            key={type}
+                            onClick={() => setFrontDeskResultType(type)}
+                            className={cn(
+                              'py-2 rounded-lg text-sm font-medium transition-colors',
+                              frontDeskResultType === type
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-orange-50'
+                            )}
+                          >
+                            {frontDeskResultLabel[type]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        处理说明（可选）
+                      </label>
+                      <textarea
+                        value={frontDeskResultNote}
+                        onChange={(e) => setFrontDeskResultNote(e.target.value)}
+                        placeholder="请输入处理说明..."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setShowFrontDeskForm(false)
+                          setFrontDeskResultType(null)
+                          setFrontDeskResultNote('')
+                        }}
+                        className="flex-1 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 transition-colors"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={handleFrontDeskProcess}
+                        disabled={!frontDeskResultType}
+                        className={cn(
+                          'flex-1 py-2 rounded-lg text-sm font-semibold transition-colors',
+                          frontDeskResultType
+                            ? 'bg-orange-500 text-white hover:bg-orange-600'
+                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        )}
+                      >
+                        确认提交
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="p-8 border-2 border-dashed border-warm-300 rounded-xl text-center">

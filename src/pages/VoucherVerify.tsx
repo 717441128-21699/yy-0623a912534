@@ -17,6 +17,7 @@ import {
   ArrowRight,
   Printer,
   Clock,
+  ArrowLeftRight,
 } from 'lucide-react'
 import useStore from '@/store/useStore'
 import { cn } from '@/lib/utils'
@@ -38,6 +39,13 @@ const typeTagBg: Record<string, string> = {
   course_card: 'bg-primary-100 text-primary-700',
   experience_voucher: 'bg-amber-100 text-amber-700',
   gift_session: 'bg-purple-100 text-purple-700',
+}
+
+const frontDeskResultLabel: Record<string, string> = {
+  supplement_deduct: '补扣卡券',
+  price_diff: '补差价',
+  change_item: '改项处理',
+  void: '作废',
 }
 
 export default function VoucherVerify() {
@@ -62,12 +70,15 @@ export default function VoucherVerify() {
   )
   const updateAppointmentStatus = useStore((s) => s.updateAppointmentStatus)
   const currentStaff = useStore((s) => s.currentStaff)
+  const getTimelineByAppointmentId = useStore((s) => s.getTimelineByAppointmentId)
 
   const patient = getPatientById(patientId!)
   const appointment = getAppointmentById(appointmentId)
   const vouchers = getVouchersByPatientId(patientId!)
   const existingRecord = getTreatmentRecordByAppointmentId(appointmentId)
   const existingVerification = getVerificationByAppointmentId(appointmentId)
+
+  const timeline = getTimelineByAppointmentId(appointmentId)
 
   const actualProject =
     existingRecord?.actualProject ?? appointment?.projectName ?? ''
@@ -243,6 +254,8 @@ export default function VoucherVerify() {
       changeItemNote,
       frontDeskNote,
       traceNo,
+      supervisorReviewed: false,
+      frontDeskProcessed: false,
     }
     addVerificationRecord(verificationRecord)
 
@@ -437,6 +450,110 @@ export default function VoucherVerify() {
             </div>
           )}
         </div>
+
+        {existingRecord && (
+          <div className="mb-4 p-4 bg-white rounded-xl2 border border-warm-200">
+            <div className="flex items-center gap-2 mb-3">
+              <Clock className="w-4 h-4 text-primary-500" />
+              <span className="text-sm font-semibold text-gray-700">
+                治疗流程时间线
+              </span>
+            </div>
+            <div className="relative pl-8">
+              {timeline.map((item, idx) => (
+                <div key={item.key} className="relative pb-3 last:pb-0">
+                  {idx < timeline.length - 1 && (
+                    <div className={cn(
+                      "absolute left-[-1.25rem] top-4 bottom-0 w-0.5",
+                      item.status === 'done' ? 'bg-primary-300' : 'bg-warm-200'
+                    )} />
+                  )}
+                  <div className={cn(
+                    "absolute left-[-1.625rem] top-0 w-5 h-5 rounded-full flex items-center justify-center",
+                    item.status === 'done' && 'bg-primary-500',
+                    item.status === 'current' && 'bg-amber-500 ring-4 ring-amber-200',
+                    item.status === 'pending' && 'bg-gray-200'
+                  )}>
+                    {item.status === 'done' ? (
+                      <Check className="w-3 h-3 text-white" />
+                    ) : item.status === 'current' ? (
+                      <Clock className="w-2.5 h-2.5 text-white" />
+                    ) : (
+                      <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className={cn(
+                      "text-xs font-medium",
+                      item.status === 'done' && 'text-gray-700',
+                      item.status === 'current' && 'text-amber-700 font-semibold',
+                      item.status === 'pending' && 'text-gray-400'
+                    )}>
+                      {item.label}
+                    </span>
+                    <span className={cn(
+                      "text-[10px] font-mono",
+                      item.status === 'done' && 'text-gray-500',
+                      item.status === 'current' && 'text-amber-600',
+                      item.status === 'pending' && 'text-gray-300'
+                    )}>
+                      {item.time ? formatDate(item.time) : '待完成'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {existingVerification?.frontDeskProcessed && existingVerification.frontDeskResultType && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-xl2"
+          >
+            <div className="flex items-start gap-3">
+              <ArrowLeftRight className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-orange-800 mb-2">
+                  前台处理结果
+                </p>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-orange-600">处理方式</span>
+                    <span className="font-medium text-orange-800">
+                      {frontDeskResultLabel[existingVerification.frontDeskResultType]}
+                    </span>
+                  </div>
+                  {existingVerification.frontDeskProcessedByName && (
+                    <div className="flex justify-between">
+                      <span className="text-orange-600">处理人</span>
+                      <span className="font-medium text-gray-700">
+                        {existingVerification.frontDeskProcessedByName}
+                      </span>
+                    </div>
+                  )}
+                  {existingVerification.frontDeskProcessedAt && (
+                    <div className="flex justify-between">
+                      <span className="text-orange-600">处理时间</span>
+                      <span className="font-medium text-gray-700">
+                        {formatDate(existingVerification.frontDeskProcessedAt)}
+                      </span>
+                    </div>
+                  )}
+                  {existingVerification.frontDeskResultNote && (
+                    <div className="mt-2 pt-2 border-t border-orange-200">
+                      <span className="text-orange-600 block mb-1">处理说明</span>
+                      <p className="text-gray-700 bg-white/60 p-2 rounded-lg">
+                        {existingVerification.frontDeskResultNote}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {voucherAnalysis.hasNoVoucherAtAll && (
           <motion.div

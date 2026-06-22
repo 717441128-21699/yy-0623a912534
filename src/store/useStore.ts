@@ -9,10 +9,13 @@ import type {
   TreatmentRecord,
   Exception,
   VerificationRecord,
+  SupervisorReviewResult,
+  FrontDeskResultType,
+  TimelineItem,
 } from '@/types'
 import { patientList, appointmentList, voucherList, staffList } from '@/data/mock'
 
-const useStore = create<{
+interface StoreState {
   currentStaff: Staff | null
   currentRoom: Room | null
   appointments: Appointment[]
@@ -42,7 +45,12 @@ const useStore = create<{
   getAppointmentsByRoom: (room: string) => Appointment[]
   getAppointmentById: (id: string) => Appointment | undefined
   getVoucherById: (id: string) => Voucher | undefined
-}>((set, get) => ({
+  reviewVerification: (verificationId: string, result: SupervisorReviewResult, note?: string) => void
+  processFrontDeskResult: (verificationId: string, resultType: FrontDeskResultType, note?: string) => void
+  getTimelineByAppointmentId: (appointmentId: string) => TimelineItem[]
+}
+
+const useStore = create<StoreState>()((set, get) => ({
   currentStaff: null,
   currentRoom: null,
   appointments: appointmentList,
@@ -168,6 +176,177 @@ const useStore = create<{
 
   getVoucherById(id) {
     return get().vouchers.find((v) => v.id === id)
+  },
+
+  reviewVerification(verificationId, result, note) {
+    const state = get()
+    const verification = state.verificationRecords.find(
+      (v) => v.id === verificationId
+    )
+    if (!verification) return
+
+    const now = new Date().toISOString()
+    const supervisor = state.currentStaff
+
+    set((s) => ({
+      verificationRecords: s.verificationRecords.map((v) =>
+        v.id === verificationId
+          ? {
+              ...v,
+              supervisorReviewed: true,
+              supervisorReviewedAt: now,
+              supervisorId: supervisor?.id,
+              supervisorName: supervisor?.name,
+              supervisorReviewResult: result,
+              supervisorReviewNote: note,
+            }
+          : v
+      ),
+    }))
+
+    if (result === 'approved') {
+      state.updateAppointmentStatus(verification.appointmentId, 'verified')
+      const treatment = state.getTreatmentRecordByAppointmentId(
+        verification.appointmentId
+      )
+      if (treatment) {
+        state.updateTreatmentRecord(treatment.id, { postOpConfirmed: true })
+      }
+    } else if (result === 'returned') {
+      state.updateAppointmentStatus(
+        verification.appointmentId,
+        'voucher_deducted'
+      )
+    } else if (result === 'to_front_desk') {
+      state.updateAppointmentStatus(verification.appointmentId, 'to_front_desk')
+    }
+  },
+
+  processFrontDeskResult(verificationId, resultType, note) {
+    const state = get()
+    const verification = state.verificationRecords.find(
+      (v) => v.id === verificationId
+    )
+    if (!verification) return
+
+    const now = new Date().toISOString()
+    const staff = state.currentStaff
+
+    set((s) => ({
+      verificationRecords: s.verificationRecords.map((v) =>
+        v.id === verificationId
+          ? {
+              ...v,
+              frontDeskProcessed: true,
+              frontDeskProcessedAt: now,
+              frontDeskProcessedBy: staff?.id,
+              frontDeskProcessedByName: staff?.name,
+              frontDeskResultType: resultType,
+              frontDeskResultNote: note,
+            }
+          : v
+      ),
+    }))
+
+    if (resultType === 'supplement_deduct') {
+      state.useVoucher(verification.voucherId)
+      set((s) => ({
+        verificationRecords: s.verificationRecords.map((v) =>
+          v.id === verificationId
+            ? {
+                ...v,
+                sessionsAfter: v.sessionsAfter - 1,
+                sessionsUsed: v.sessionsUsed + 1,
+              }
+            : v
+        ),
+      }))
+      state.updateAppointmentStatus(
+        verification.appointmentId,
+        'voucher_deducted'
+      )
+    } else if (resultType === 'price_diff') {
+      state.updateAppointmentStatus(
+        verification.appointmentId,
+        'voucher_deducted'
+      )
+    } else if (resultType === 'change_item') {
+      state.updateAppointmentStatus(
+        verification.appointmentId,
+        'voucher_deducted'
+      )
+    } else if (resultType === 'void') {
+      state.updateAppointmentStatus(verification.appointmentId, 'verified')
+    }
+  },
+
+  getTimelineByAppointmentId(appointmentId) {
+    const state = get()
+    const treatment = state.getTreatmentRecordByAppointmentId(appointmentId)
+    const verification = state.getVerificationByAppointmentId(appointmentId)
+    const appointment = state.getAppointmentById(appointmentId)
+
+    const items: TimelineItem[] = []
+
+    items.push({
+      key: 'treatment_start',
+      label: '治疗开始',
+      time: treatment?.startTime,
+      status: treatment?.startTime ? 'done' : 'pending',
+    })
+
+    items.push({
+      key: 'treatment_end',
+      label: '治疗完成',
+      time: treatment?.endTime,
+      status: treatment?.endTime ? 'done' : 'pending',
+    })
+
+    items.push({
+      key: 'consumables',
+      label: '耗材校验',
+      time: treatment?.endTime,
+      status: treatment?.endTime ? 'done' : 'pending',
+    })
+
+    items.push({
+      key: 'voucher',
+      label: '卡券扣减',
+      time: verification?.verifiedAt,
+      status: verification?.verifiedAt ? 'done' : 'pending',
+    })
+
+    items.push({
+      key: 'patient_confirm',
+      label: '顾客确认',
+      time: verification?.patientConfirmedAt,
+      status: verification?.patientConfirmed ? 'done' : 'pending',
+    })
+
+    items.push({
+      key: 'post_op',
+      label: '术后交代',
+      time: verification?.postOpCompletedAt,
+      status: verification?.postOpCompletedAt ? 'done' : 'pending',
+    })
+
+    items.push({
+      key: 'supervisor',
+      label: '主管复核',
+      time: verification?.supervisorReviewedAt,
+      status: verification?.supervisorReviewed ? 'done' : 'pending',
+    })
+
+    const doneCount = items.filter((i) => i.status === 'done').length
+    if (
+      doneCount > 0 &&
+      doneCount < items.length &&
+      appointment?.status !== 'verified'
+    ) {
+      items[doneCount].status = 'current'
+    }
+
+    return items
   },
 }))
 

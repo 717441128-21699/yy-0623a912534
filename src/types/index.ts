@@ -73,6 +73,17 @@ export interface TreatmentRecord {
   verificationId?: string
 }
 
+export type SupervisorReviewResult = 'approved' | 'returned' | 'to_front_desk'
+
+export type FrontDeskResultType = 'supplement_deduct' | 'price_diff' | 'change_item' | 'void'
+
+export interface TimelineItem {
+  key: string
+  label: string
+  time?: string
+  status: 'done' | 'pending' | 'current'
+}
+
 export interface VerificationRecord {
   id: string
   appointmentId: string
@@ -91,10 +102,23 @@ export interface VerificationRecord {
   patientConfirmed: boolean
   patientConfirmedAt?: string
   verifiedAt: string
+  postOpCompletedAt?: string
   priceDiffAmount?: number
   changeItemNote?: string
   frontDeskNote?: string
   traceNo: string
+  supervisorReviewed: boolean
+  supervisorReviewedAt?: string
+  supervisorId?: string
+  supervisorName?: string
+  supervisorReviewResult?: SupervisorReviewResult
+  supervisorReviewNote?: string
+  frontDeskProcessed: boolean
+  frontDeskProcessedAt?: string
+  frontDeskProcessedBy?: string
+  frontDeskProcessedByName?: string
+  frontDeskResultType?: FrontDeskResultType
+  frontDeskResultNote?: string
 }
 
 export interface Exception {

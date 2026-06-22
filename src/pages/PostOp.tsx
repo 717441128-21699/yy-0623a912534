@@ -67,6 +67,10 @@ export default function PostOp() {
   const getVouchersByPatientId = useStore((s) => s.getVouchersByPatientId)
   const updateVerificationRecord = useStore((s) => s.updateVerificationRecord)
 
+  const getTimelineByAppointmentId = useStore(
+    (s) => s.getTimelineByAppointmentId
+  )
+
   const patient = getPatientById(patientId!)
   const appointment = getAppointmentById(appointmentId)
   const record = getTreatmentRecordByAppointmentId(appointmentId)
@@ -89,36 +93,17 @@ export default function PostOp() {
     ? vouchers.find((v) => v.id === record.voucherId)
     : null
 
-  const timelineItems = [
-    {
-      label: '治疗开始',
-      time: record?.startTime,
-      key: 'start',
-    },
-    {
-      label: '治疗完成',
-      time: record?.endTime,
-      key: 'end',
-    },
-    {
-      label: '卡券核销',
-      time: verification?.verifiedAt,
-      key: 'verify',
-    },
-    {
-      label: '顾客确认',
-      time: verification?.patientConfirmedAt,
-      key: 'confirm',
-    },
-  ]
+  const timelineItems = getTimelineByAppointmentId(appointmentId)
 
   const handleConfirm = () => {
     if (!record) return
     updateTreatmentRecord(record.id, { postOpConfirmed: true })
+    const now = new Date().toISOString()
     if (verification) {
       updateVerificationRecord(verification.id, {
         patientConfirmed: true,
-        patientConfirmedAt: new Date().toISOString(),
+        patientConfirmedAt: verification.patientConfirmedAt ?? now,
+        postOpCompletedAt: now,
       })
     }
     updateAppointmentStatus(appointmentId, 'verified')
@@ -201,18 +186,42 @@ export default function PostOp() {
           </div>
           <div className="relative pl-8">
             {timelineItems.map((item, idx) => (
-              <div key={item.key} className="relative pb-6 last:pb-0">
+              <div key={item.key} className="relative pb-5 last:pb-0">
                 {idx < timelineItems.length - 1 && (
-                  <div className="absolute left-[-1.25rem] top-6 bottom-0 w-0.5 bg-warm-200" />
+                  <div className={cn(
+                    "absolute left-[-1.25rem] top-6 bottom-0 w-0.5",
+                    item.status === 'done' ? 'bg-primary-300' : 'bg-warm-200'
+                  )} />
                 )}
-                <div className="absolute left-[-1.625rem] top-0 w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center">
-                  <Clock className="w-3 h-3 text-primary-600" />
+                <div className={cn(
+                  "absolute left-[-1.625rem] top-0 w-6 h-6 rounded-full flex items-center justify-center",
+                  item.status === 'done' && 'bg-primary-500',
+                  item.status === 'current' && 'bg-amber-500 ring-4 ring-amber-200',
+                  item.status === 'pending' && 'bg-gray-200'
+                )}>
+                  {item.status === 'done' ? (
+                    <Check className="w-3.5 h-3.5 text-white" />
+                  ) : item.status === 'current' ? (
+                    <Clock className="w-3 h-3 text-white" />
+                  ) : (
+                    <div className="w-2 h-2 rounded-full bg-gray-400" />
+                  )}
                 </div>
                 <div className="flex items-start justify-between gap-4">
-                  <span className="text-sm font-medium text-gray-700">
+                  <span className={cn(
+                    "text-sm font-medium",
+                    item.status === 'done' && 'text-gray-700',
+                    item.status === 'current' && 'text-amber-700 font-semibold',
+                    item.status === 'pending' && 'text-gray-400'
+                  )}>
                     {item.label}
                   </span>
-                  <span className="text-sm text-gray-500 font-mono">
+                  <span className={cn(
+                    "text-sm font-mono",
+                    item.status === 'done' && 'text-gray-600',
+                    item.status === 'current' && 'text-amber-600',
+                    item.status === 'pending' && 'text-gray-300'
+                  )}>
                     {formatDate(item.time)}
                   </span>
                 </div>
