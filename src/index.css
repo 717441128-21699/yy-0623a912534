@@ -1,0 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Noto Sans SC", system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #FAFAF8;
+  color: #1a1a1a;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #FAFAF8;
+}
+
+.signature-canvas {
+  touch-action: none;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-500 text-white px-6 py-3 rounded-xl2 font-medium text-base
+           active:scale-[0.97] transition-transform duration-100
+           hover:bg-primary-600 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-primary-500 border-2 border-primary-500 px-6 py-3 rounded-xl2 font-medium text-base
+           active:scale-[0.97] transition-transform duration-100
+           hover:bg-primary-50 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-danger {
+    @apply bg-coral-500 text-white px-6 py-3 rounded-xl2 font-medium text-base
+           active:scale-[0.97] transition-transform duration-100
+           hover:bg-coral-600 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-amber {
+    @apply bg-amber-500 text-white px-6 py-3 rounded-xl2 font-medium text-base
+           active:scale-[0.97] transition-transform duration-100
+           hover:bg-amber-600 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .card {
+    @apply bg-white rounded-xl2 shadow-sm border border-warm-200 p-4;
+  }
+
+  .status-waiting {
+    @apply bg-amber-500/10 text-amber-600;
+  }
+
+  .status-in-progress {
+    @apply bg-primary-500/10 text-primary-500;
+  }
+
+  .status-completed {
+    @apply bg-blue-500/10 text-blue-600;
+  }
+
+  .status-verified {
+    @apply bg-green-500/10 text-green-600;
+  }
+
+  .page-container {
+    @apply p-6 max-w-[1200px] mx-auto;
+  }
+
+  .section-title {
+    @apply text-lg font-bold text-gray-800 mb-4;
+  }
+}
