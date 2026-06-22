@@ -10,6 +10,8 @@ import {
   Send,
   Clock,
 } from 'lucide-react'
+import { format } from 'date-fns'
+import { zhCN } from 'date-fns/locale'
 import useStore from '@/store/useStore'
 import { cn } from '@/lib/utils'
 import { postOpInstructions } from '@/data/mock'
@@ -23,6 +25,29 @@ const fadeUp = {
   }),
 }
 
+const treatmentTypeLabel: Record<string, string> = {
+  normal: '正常核销',
+  change_item: '改项',
+  price_diff: '补差价',
+  to_front_desk: '转前台',
+}
+
+const treatmentTypeBadge: Record<string, string> = {
+  normal: 'bg-green-100 text-green-700',
+  change_item: 'bg-gray-100 text-gray-700',
+  price_diff: 'bg-amber-100 text-amber-700',
+  to_front_desk: 'bg-coral-100 text-coral-700',
+}
+
+const formatDate = (dateStr: string | null | undefined) => {
+  if (!dateStr) return '—'
+  try {
+    return format(new Date(dateStr), 'yyyy-MM-dd HH:mm', { locale: zhCN })
+  } catch {
+    return '—'
+  }
+}
+
 export default function PostOp() {
   const { id: patientId } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -31,14 +56,21 @@ export default function PostOp() {
 
   const getPatientById = useStore((s) => s.getPatientById)
   const getAppointmentById = useStore((s) => s.getAppointmentById)
-  const treatmentRecords = useStore((s) => s.treatmentRecords)
+  const getTreatmentRecordByAppointmentId = useStore(
+    (s) => s.getTreatmentRecordByAppointmentId
+  )
+  const getVerificationByAppointmentId = useStore(
+    (s) => s.getVerificationByAppointmentId
+  )
   const updateTreatmentRecord = useStore((s) => s.updateTreatmentRecord)
   const updateAppointmentStatus = useStore((s) => s.updateAppointmentStatus)
   const getVouchersByPatientId = useStore((s) => s.getVouchersByPatientId)
+  const addVerificationRecord = useStore((s) => s.addVerificationRecord)
 
   const patient = getPatientById(patientId!)
   const appointment = getAppointmentById(appointmentId)
-  const record = treatmentRecords.find((r) => r.appointmentId === appointmentId)
+  const record = getTreatmentRecordByAppointmentId(appointmentId)
+  const verification = getVerificationByAppointmentId(appointmentId)
 
   const [confirmed, setConfirmed] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
@@ -57,19 +89,39 @@ export default function PostOp() {
     ? vouchers.find((v) => v.id === record.voucherId)
     : null
 
-  const startTime = record?.startTime
-    ? new Date(record.startTime)
-    : null
-  const endTime = record?.endTime
-    ? new Date(record.endTime)
-    : null
-
-  const formatTime = (d: Date) =>
-    `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+  const timelineItems = [
+    {
+      label: '治疗开始',
+      time: record?.startTime,
+      key: 'start',
+    },
+    {
+      label: '治疗完成',
+      time: record?.endTime,
+      key: 'end',
+    },
+    {
+      label: '卡券核销',
+      time: verification?.verifiedAt,
+      key: 'verify',
+    },
+    {
+      label: '顾客确认',
+      time: verification?.patientConfirmedAt,
+      key: 'confirm',
+    },
+  ]
 
   const handleConfirm = () => {
     if (!record) return
     updateTreatmentRecord(record.id, { postOpConfirmed: true })
+    if (verification) {
+      addVerificationRecord({
+        ...verification,
+        patientConfirmed: true,
+        patientConfirmedAt: new Date().toISOString(),
+      })
+    }
     updateAppointmentStatus(appointmentId, 'verified')
     setShowSuccess(true)
     setTimeout(() => {
@@ -110,13 +162,23 @@ export default function PostOp() {
               <CheckCircle className="w-4 h-4" />
               治疗完成
             </span>
+            {verification && (
+              <span
+                className={cn(
+                  'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium',
+                  treatmentTypeBadge[verification.treatmentType]
+                )}
+              >
+                {treatmentTypeLabel[verification.treatmentType]}
+              </span>
+            )}
           </div>
           <p className="text-xl font-bold text-gray-800 mb-3">{projectName}</p>
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
             <Clock className="w-4 h-4" />
             <span>
-              {startTime ? formatTime(startTime) : '—'} →{' '}
-              {endTime ? formatTime(endTime) : '—'}
+              {formatDate(record?.startTime)} →{' '}
+              {formatDate(record?.endTime)}
             </span>
           </div>
           <div className="flex items-center gap-4 text-sm text-gray-500">
@@ -127,6 +189,108 @@ export default function PostOp() {
 
         <motion.div
           custom={1}
+          variants={fadeUp}
+          initial="hidden"
+          animate="visible"
+          className="p-4 bg-white rounded-xl2 border border-warm-200"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="w-4 h-4 text-primary-500" />
+            <span className="text-sm font-semibold text-gray-700">
+              治疗时间线
+            </span>
+          </div>
+          <div className="relative pl-8">
+            {timelineItems.map((item, idx) => (
+              <div key={item.key} className="relative pb-6 last:pb-0">
+                {idx < timelineItems.length - 1 && (
+                  <div className="absolute left-[-1.25rem] top-6 bottom-0 w-0.5 bg-warm-200" />
+                )}
+                <div className="absolute left-[-1.625rem] top-0 w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center">
+                  <Clock className="w-3 h-3 text-primary-600" />
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-sm font-medium text-gray-700">
+                    {item.label}
+                  </span>
+                  <span className="text-sm text-gray-500 font-mono">
+                    {formatDate(item.time)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        {verification && (
+          <motion.div
+            custom={2}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            className="p-4 bg-white rounded-xl2 border border-warm-200"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <FileText className="w-4 h-4 text-primary-500" />
+              <span className="text-sm font-semibold text-gray-700">
+                核销信息
+              </span>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">凭证编号</span>
+                <span className="text-sm font-mono font-medium text-gray-800">
+                  HX{verification.traceNo}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">操作人</span>
+                <span className="text-sm text-gray-800">
+                  {verification.operatorName}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">核销类型</span>
+                <span
+                  className={cn(
+                    'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                    treatmentTypeBadge[verification.treatmentType]
+                  )}
+                >
+                  {treatmentTypeLabel[verification.treatmentType]}
+                </span>
+              </div>
+              {verification.priceDiffAmount !== undefined &&
+                verification.priceDiffAmount > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">补差价金额</span>
+                    <span className="text-sm font-medium text-amber-600">
+                      ¥{verification.priceDiffAmount.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+              {verification.changeItemNote && (
+                <div className="pt-3 border-t border-warm-100">
+                  <span className="text-sm text-gray-500 block mb-1">改项说明</span>
+                  <p className="text-sm text-gray-700 bg-warm-50 p-3 rounded-lg">
+                    {verification.changeItemNote}
+                  </p>
+                </div>
+              )}
+              {verification.frontDeskNote && (
+                <div className="pt-3 border-t border-warm-100">
+                  <span className="text-sm text-gray-500 block mb-1">前台备注</span>
+                  <p className="text-sm text-gray-700 bg-coral-50 p-3 rounded-lg">
+                    {verification.frontDeskNote}
+                  </p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        <motion.div
+          custom={verification ? 3 : 2}
           variants={fadeUp}
           initial="hidden"
           animate="visible"
@@ -161,7 +325,7 @@ export default function PostOp() {
 
         {usedVoucher && (
           <motion.div
-            custom={2}
+            custom={verification ? 4 : 3}
             variants={fadeUp}
             initial="hidden"
             animate="visible"

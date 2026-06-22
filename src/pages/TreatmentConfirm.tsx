@@ -66,6 +66,7 @@ export default function TreatmentConfirm() {
       patientId: patient.id,
       actualProject: appointment.projectName,
       operator: currentStaff?.name ?? '',
+      operatorId: currentStaff?.id,
       deviceOrBatch: '',
       startTime: new Date().toISOString(),
       endTime: '',

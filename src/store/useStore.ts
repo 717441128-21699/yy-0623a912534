@@ -8,6 +8,7 @@ import type {
   Voucher,
   TreatmentRecord,
   Exception,
+  VerificationRecord,
 } from '@/types'
 import { patientList, appointmentList, voucherList, staffList } from '@/data/mock'
 
@@ -18,6 +19,7 @@ const useStore = create<{
   patients: Patient[]
   vouchers: Voucher[]
   treatmentRecords: TreatmentRecord[]
+  verificationRecords: VerificationRecord[]
   exceptions: Exception[]
   selectedAppointmentId: string | null
 
@@ -30,10 +32,15 @@ const useStore = create<{
   addException: (exception: Exception) => void
   updateException: (id: string, updates: Partial<Exception>) => void
   useVoucher: (voucherId: string) => void
+  addVerificationRecord: (record: VerificationRecord) => void
+  getVerificationByAppointmentId: (appointmentId: string) => VerificationRecord | undefined
+  getVerificationById: (id: string) => VerificationRecord | undefined
+  getTreatmentRecordByAppointmentId: (appointmentId: string) => TreatmentRecord | undefined
   getPatientById: (id: string) => Patient | undefined
   getVouchersByPatientId: (patientId: string) => Voucher[]
   getAppointmentsByRoom: (room: string) => Appointment[]
   getAppointmentById: (id: string) => Appointment | undefined
+  getVoucherById: (id: string) => Voucher | undefined
 }>((set, get) => ({
   currentStaff: null,
   currentRoom: null,
@@ -41,6 +48,7 @@ const useStore = create<{
   patients: patientList,
   vouchers: voucherList,
   treatmentRecords: [],
+  verificationRecords: [],
   exceptions: [],
   selectedAppointmentId: null,
 
@@ -103,12 +111,34 @@ const useStore = create<{
         v.id === voucherId
           ? {
               ...v,
-              remainingSessions: v.remainingSessions - 1,
+              remainingSessions: Math.max(0, v.remainingSessions - 1),
               usedSessions: v.usedSessions + 1,
             }
           : v
       ),
     }))
+  },
+
+  addVerificationRecord(record) {
+    set((state) => ({
+      verificationRecords: [...state.verificationRecords, record],
+    }))
+  },
+
+  getVerificationByAppointmentId(appointmentId) {
+    return get().verificationRecords.find(
+      (v) => v.appointmentId === appointmentId
+    )
+  },
+
+  getVerificationById(id) {
+    return get().verificationRecords.find((v) => v.id === id)
+  },
+
+  getTreatmentRecordByAppointmentId(appointmentId) {
+    return get().treatmentRecords.find(
+      (t) => t.appointmentId === appointmentId
+    )
   },
 
   getPatientById(id) {
@@ -125,6 +155,10 @@ const useStore = create<{
 
   getAppointmentById(id) {
     return get().appointments.find((a) => a.id === id)
+  },
+
+  getVoucherById(id) {
+    return get().vouchers.find((v) => v.id === id)
   },
 }))
 

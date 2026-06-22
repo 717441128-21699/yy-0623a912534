@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { CalendarDays, Clock, ChevronRight, Filter } from 'lucide-react'
 import useStore from '@/store/useStore'
 import { cn } from '@/lib/utils'
@@ -18,21 +18,27 @@ const STATUS_FILTERS: { key: AppointmentStatus | 'all'; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'waiting', label: '待治疗' },
   { key: 'in_progress', label: '治疗中' },
-  { key: 'completed', label: '已完成' },
+  { key: 'treatment_completed', label: '治疗完成' },
+  { key: 'voucher_deducted', label: '已扣卡券' },
+  { key: 'to_front_desk', label: '转前台' },
   { key: 'verified', label: '已核销' },
 ]
 
 const STATUS_LABELS: Record<AppointmentStatus, string> = {
   waiting: '待治疗',
   in_progress: '治疗中',
-  completed: '已完成',
+  treatment_completed: '治疗完成',
+  voucher_deducted: '已扣卡券',
+  to_front_desk: '转前台',
   verified: '已核销',
 }
 
 const STATUS_CLASSES: Record<AppointmentStatus, string> = {
   waiting: 'bg-amber-500/10 text-amber-600',
   in_progress: 'bg-primary-500/10 text-primary-500',
-  completed: 'bg-blue-500/10 text-blue-600',
+  treatment_completed: 'bg-blue-500/10 text-blue-600',
+  voucher_deducted: 'bg-purple-500/10 text-purple-600',
+  to_front_desk: 'bg-orange-500/10 text-orange-600',
   verified: 'bg-green-500/10 text-green-600',
 }
 
@@ -47,6 +53,7 @@ export default function Schedule() {
 
   const [activeRoom, setActiveRoom] = useState<Room>(currentRoom ?? 'skin_treatment')
   const [activeStatus, setActiveStatus] = useState<AppointmentStatus | 'all'>('all')
+  const [toast, setToast] = useState<string | null>(null)
 
   const appointments = getAppointmentsByRoom(activeRoom)
 
@@ -63,7 +70,12 @@ export default function Schedule() {
 
   const today = format(new Date(), 'yyyy年M月d日', { locale: zhCN })
 
-  const handleCardClick = (patientId: string, appointmentId: string) => {
+  const handleCardClick = (patientId: string, appointmentId: string, status: AppointmentStatus) => {
+    if (status === 'verified') {
+      setToast('该预约已完成全部流程')
+      setTimeout(() => setToast(null), 2000)
+      return
+    }
     setSelectedAppointmentId(appointmentId)
     navigate(`/patient/${patientId}/confirm?appointment=${appointmentId}`)
   }
@@ -133,7 +145,7 @@ export default function Schedule() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05, duration: 0.3 }}
-              onClick={() => handleCardClick(patient.id, appointment.id)}
+              onClick={() => handleCardClick(patient.id, appointment.id, appointment.status)}
               className="card cursor-pointer hover:shadow-md transition-shadow"
             >
               <div className="flex items-center justify-between mb-3">
@@ -189,6 +201,19 @@ export default function Schedule() {
           暂无符合条件的排台信息
         </div>
       )}
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 bg-gray-800 text-white text-sm rounded-full shadow-lg"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

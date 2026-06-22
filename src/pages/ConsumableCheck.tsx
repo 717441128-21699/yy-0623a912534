@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { format } from 'date-fns'
+import { zhCN } from 'date-fns/locale'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -53,15 +55,15 @@ export default function ConsumableCheck() {
   const updateAppointmentStatus = useStore((s) => s.updateAppointmentStatus)
   const addTreatmentRecord = useStore((s) => s.addTreatmentRecord)
   const updateTreatmentRecord = useStore((s) => s.updateTreatmentRecord)
-  const treatmentRecords = useStore((s) => s.treatmentRecords)
+  const getTreatmentRecordByAppointmentId = useStore((s) => s.getTreatmentRecordByAppointmentId)
   const currentStaff = useStore((s) => s.currentStaff)
 
   const patient = patientId ? getPatientById(patientId) : undefined
   const appointment = appointmentId ? getAppointmentById(appointmentId) : undefined
 
-  const existingRecord = treatmentRecords.find(
-    (r) => r.appointmentId === appointmentId
-  )
+  const existingRecord = appointmentId
+    ? getTreatmentRecordByAppointmentId(appointmentId)
+    : undefined
 
   const [selectedProjects, setSelectedProjects] = useState<string[]>(
     appointment ? [appointment.projectName] : []
@@ -71,7 +73,9 @@ export default function ConsumableCheck() {
   )
   const [selectedDevice, setSelectedDevice] = useState('')
   const [batchNo, setBatchNo] = useState('')
-  const [completedTime, setCompletedTime] = useState('')
+  const [completedTime, setCompletedTime] = useState<string>(
+    existingRecord?.endTime ?? ''
+  )
 
   if (!patient || !appointment) {
     return (
@@ -92,7 +96,7 @@ export default function ConsumableCheck() {
   }
 
   const handleConfirm = () => {
-    const endTime = new Date().toLocaleTimeString('zh-CN')
+    const endTime = new Date().toISOString()
     setCompletedTime(endTime)
 
     const deviceOrBatch =
@@ -102,10 +106,13 @@ export default function ConsumableCheck() {
           ? batchNo
           : [selectedDevice, batchNo].filter(Boolean).join(' / ')
 
+    const operatorName = staffList.find((s) => s.id === selectedOperatorId)?.name ?? ''
+
     if (existingRecord) {
       updateTreatmentRecord(existingRecord.id, {
         actualProject: selectedProjects.join('、'),
-        operator: staffList.find((s) => s.id === selectedOperatorId)?.name ?? '',
+        operator: operatorName,
+        operatorId: selectedOperatorId,
         deviceOrBatch,
         endTime,
       })
@@ -115,7 +122,8 @@ export default function ConsumableCheck() {
         appointmentId,
         patientId: patient.id,
         actualProject: selectedProjects.join('、'),
-        operator: staffList.find((s) => s.id === selectedOperatorId)?.name ?? '',
+        operator: operatorName,
+        operatorId: selectedOperatorId,
         deviceOrBatch,
         startTime: new Date().toISOString(),
         endTime,
@@ -127,7 +135,7 @@ export default function ConsumableCheck() {
       })
     }
 
-    updateAppointmentStatus(appointmentId, 'completed')
+    updateAppointmentStatus(appointmentId, 'treatment_completed')
 
     setTimeout(() => {
       navigate(`/patient/${patientId}/voucher?appointment=${appointmentId}`)
@@ -319,7 +327,14 @@ export default function ConsumableCheck() {
           >
             <Clock className="w-5 h-5 text-green-500" />
             <span className="text-sm text-gray-600">
-              治疗完成时间：{completedTime}
+              治疗完成时间：{(() => {
+                const timeToDisplay = existingRecord?.endTime || completedTime
+                try {
+                  return format(new Date(timeToDisplay), 'yyyy-MM-dd HH:mm', { locale: zhCN })
+                } catch {
+                  return timeToDisplay
+                }
+              })()}
             </span>
           </motion.div>
         )}

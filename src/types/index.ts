@@ -1,6 +1,12 @@
 export type Room = 'skin_treatment' | 'photoelectric' | 'injection'
 
-export type AppointmentStatus = 'waiting' | 'in_progress' | 'completed' | 'verified'
+export type AppointmentStatus =
+  | 'waiting'
+  | 'in_progress'
+  | 'treatment_completed'
+  | 'voucher_deducted'
+  | 'to_front_desk'
+  | 'verified'
 
 export interface Staff {
   id: string
@@ -60,6 +66,35 @@ export interface TreatmentRecord {
   patientSignature: string
   patientConfirmed: boolean
   postOpConfirmed: boolean
+  priceDiffAmount?: number
+  changeItemNote?: string
+  frontDeskNote?: string
+  operatorId?: string
+  verificationId?: string
+}
+
+export interface VerificationRecord {
+  id: string
+  appointmentId: string
+  patientId: string
+  voucherId: string
+  voucherName: string
+  voucherType: 'course_card' | 'experience_voucher' | 'gift_session'
+  actualProject: string
+  bookedProject: string
+  treatmentType: 'normal' | 'change_item' | 'price_diff' | 'to_front_desk'
+  sessionsBefore: number
+  sessionsAfter: number
+  sessionsUsed: number
+  operatorId: string
+  operatorName: string
+  patientConfirmed: boolean
+  patientConfirmedAt?: string
+  verifiedAt: string
+  priceDiffAmount?: number
+  changeItemNote?: string
+  frontDeskNote?: string
+  traceNo: string
 }
 
 export interface Exception {
@@ -74,6 +109,8 @@ export interface Exception {
   createdAt: string
   resolvedAt?: string
   resolvedBy?: string
+  projectName?: string
+  reason?: string
 }
 
 export interface PostOpInstruction {
