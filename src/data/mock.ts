@@ -7,6 +7,8 @@ export const staffList: Staff[] = [
   { id: 'S004', name: '赵主管', role: 'supervisor', room: 'skin_treatment', avatar: '', password: '123456' },
   { id: 'S005', name: '陈护士', role: 'nurse', room: 'photoelectric', avatar: '', password: '123456' },
   { id: 'S006', name: '刘治疗师', role: 'therapist', room: 'injection', avatar: '', password: '123456' },
+  { id: 'S007', name: '周前台', role: 'front_desk', room: 'skin_treatment', avatar: '', password: '123456' },
+  { id: 'S008', name: '吴前台', role: 'front_desk', room: 'skin_treatment', avatar: '', password: '123456' },
 ]
 
 export const patientList: Patient[] = [

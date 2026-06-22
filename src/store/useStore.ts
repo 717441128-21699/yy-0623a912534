@@ -48,6 +48,8 @@ interface StoreState {
   reviewVerification: (verificationId: string, result: SupervisorReviewResult, note?: string) => void
   processFrontDeskResult: (verificationId: string, resultType: FrontDeskResultType, note?: string) => void
   getTimelineByAppointmentId: (appointmentId: string) => TimelineItem[]
+  getReviewedVerifications: () => VerificationRecord[]
+  getVerificationsToFrontDesk: () => VerificationRecord[]
 }
 
 const useStore = create<StoreState>()((set, get) => ({
@@ -212,6 +214,16 @@ const useStore = create<StoreState>()((set, get) => ({
       if (treatment) {
         state.updateTreatmentRecord(treatment.id, { postOpConfirmed: true })
       }
+      set((s) => ({
+        verificationRecords: s.verificationRecords.map((v) =>
+          v.id === verificationId
+            ? {
+                ...v,
+                postOpCompletedAt: now,
+              }
+            : v
+        ),
+      }))
     } else if (result === 'returned') {
       state.updateAppointmentStatus(
         verification.appointmentId,
@@ -323,9 +335,15 @@ const useStore = create<StoreState>()((set, get) => ({
       status: verification?.patientConfirmed ? 'done' : 'pending',
     })
 
+    const supervisorSkippedPostOp =
+      verification?.supervisorReviewed &&
+      verification?.supervisorReviewResult === 'approved' &&
+      verification.postOpCompletedAt &&
+      !treatment?.postOpConfirmed
+
     items.push({
       key: 'post_op',
-      label: '术后交代',
+      label: supervisorSkippedPostOp ? '术后交代(主管复核通过)' : '术后交代',
       time: verification?.postOpCompletedAt,
       status: verification?.postOpCompletedAt ? 'done' : 'pending',
     })
@@ -347,6 +365,17 @@ const useStore = create<StoreState>()((set, get) => ({
     }
 
     return items
+  },
+
+  getReviewedVerifications() {
+    return get().verificationRecords.filter((v) => v.supervisorReviewed)
+  },
+
+  getVerificationsToFrontDesk() {
+    return get().verificationRecords.filter(
+      (v) =>
+        v.supervisorReviewResult === 'to_front_desk' && !v.frontDeskProcessed
+    )
   },
 }))
 

@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CalendarDays, Clock, ChevronRight, Filter } from 'lucide-react'
+import { CalendarDays, Clock, ChevronRight, Filter, ArrowLeftRight, CheckCircle } from 'lucide-react'
 import useStore from '@/store/useStore'
 import { cn } from '@/lib/utils'
-import type { Room, AppointmentStatus } from '@/types'
+import type { Room, AppointmentStatus, FrontDeskResultType } from '@/types'
 
 const ROOMS: { key: Room; label: string }[] = [
   { key: 'skin_treatment', label: '皮肤科治疗室' },
@@ -49,6 +49,7 @@ export default function Schedule() {
   const currentRoom = useStore((s) => s.currentRoom)
   const getAppointmentsByRoom = useStore((s) => s.getAppointmentsByRoom)
   const getPatientById = useStore((s) => s.getPatientById)
+  const getVerificationByAppointmentId = useStore((s) => s.getVerificationByAppointmentId)
   const setSelectedAppointmentId = useStore((s) => s.setSelectedAppointmentId)
 
   const [activeRoom, setActiveRoom] = useState<Room>(currentRoom ?? 'skin_treatment')
@@ -60,6 +61,13 @@ export default function Schedule() {
   const filtered = activeStatus === 'all'
     ? appointments
     : appointments.filter((a) => a.status === activeStatus)
+
+  const frontDeskResultLabel: Record<FrontDeskResultType, string> = {
+    supplement_deduct: '补扣卡券',
+    price_diff: '补差价',
+    change_item: '改项处理',
+    void: '作废',
+  }
 
   const statusCounts = STATUS_FILTERS.map((f) => ({
     ...f,
@@ -78,14 +86,16 @@ export default function Schedule() {
     }
     setSelectedAppointmentId(appointmentId)
 
-    if (status === 'waiting' || status === 'in_progress') {
+    const verification = getVerificationByAppointmentId(appointmentId)
+
+    if (status === 'to_front_desk' || (status === 'voucher_deducted' && verification?.frontDeskProcessed)) {
+      navigate(`/patient/${patientId}/voucher?appointment=${appointmentId}`)
+    } else if (status === 'waiting' || status === 'in_progress') {
       navigate(`/patient/${patientId}/confirm?appointment=${appointmentId}`)
     } else if (status === 'treatment_completed') {
       navigate(`/patient/${patientId}/voucher?appointment=${appointmentId}`)
     } else if (status === 'voucher_deducted') {
       navigate(`/patient/${patientId}/post-op?appointment=${appointmentId}`)
-    } else if (status === 'to_front_desk') {
-      navigate(`/patient/${patientId}/voucher?appointment=${appointmentId}`)
     } else {
       navigate(`/patient/${patientId}/confirm?appointment=${appointmentId}`)
     }
@@ -148,6 +158,7 @@ export default function Schedule() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {filtered.map((appointment, index) => {
           const patient = getPatientById(appointment.patientId)
+          const verification = getVerificationByAppointmentId(appointment.id)
           if (!patient) return null
 
           return (
@@ -190,6 +201,25 @@ export default function Schedule() {
                   <span>约{appointment.estimatedDuration}分钟</span>
                 </div>
               </div>
+
+              {verification?.frontDeskProcessed && appointment.status === 'voucher_deducted' && (
+                <div className="mb-3 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <ArrowLeftRight className="w-4 h-4 text-orange-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-orange-700 font-medium flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        前台已处理：{frontDeskResultLabel[verification.frontDeskResultType!]}
+                      </p>
+                      {verification.frontDeskResultNote && (
+                        <p className="text-xs text-orange-600 mt-0.5 truncate">
+                          {verification.frontDeskResultNote}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-between">
                 <span

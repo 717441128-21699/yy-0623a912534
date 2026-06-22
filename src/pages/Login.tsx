@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Stethoscope, Zap, Syringe, LogIn, ShieldCheck } from 'lucide-react'
+import { Stethoscope, Zap, Syringe, LogIn, ShieldCheck, User } from 'lucide-react'
 import useStore from '@/store/useStore'
 import type { Room } from '@/types'
 import { cn } from '@/lib/utils'
@@ -17,9 +17,15 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
   const [error, setError] = useState('')
+  const [isFrontDesk, setIsFrontDesk] = useState(false)
 
   const login = useStore((s) => s.login)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const id = staffId.trim().toUpperCase()
+    setIsFrontDesk(id.startsWith('S007') || id.startsWith('S008'))
+  }, [staffId])
 
   const handleLogin = () => {
     setError('')
@@ -31,16 +37,20 @@ export default function Login() {
       setError('请输入密码')
       return
     }
-    if (!selectedRoom) {
+    if (!isFrontDesk && !selectedRoom) {
       setError('请选择诊室')
       return
     }
-    const success = login(staffId, password, selectedRoom ?? undefined)
+    const success = login(staffId, password, isFrontDesk ? undefined : selectedRoom ?? undefined)
     if (!success) {
       setError('工号或密码错误')
       return
     }
-    navigate('/')
+    if (isFrontDesk) {
+      navigate('/front-desk')
+    } else {
+      navigate('/')
+    }
   }
 
   return (
@@ -80,7 +90,7 @@ export default function Login() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            {rooms.map((room) => (
+            {!isFrontDesk && rooms.map((room) => (
               <button
                 key={room.value}
                 onClick={() => setSelectedRoom(room.value)}
@@ -95,6 +105,12 @@ export default function Login() {
                 <span className="text-xs font-medium">{room.label}</span>
               </button>
             ))}
+            {isFrontDesk && (
+              <div className="w-full flex flex-col items-center gap-2 py-4 rounded-lg border-2 border-primary-500 bg-primary-500/20 text-white">
+                <User className="w-6 h-6" />
+                <span className="text-xs font-medium">前台工作台</span>
+              </div>
+            )}
           </div>
 
           {error && (

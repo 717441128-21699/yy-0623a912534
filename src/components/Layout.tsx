@@ -2,7 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ClipboardCheck, CalendarDays, AlertTriangle, FileCheck, LogOut } from 'lucide-react'
+import { ClipboardCheck, CalendarDays, AlertTriangle, FileCheck, LogOut, ArrowLeftRight, FileText } from 'lucide-react'
 import useStore from '@/store/useStore'
 import type { Room } from '@/types'
 import { cn } from '@/lib/utils'
@@ -18,12 +18,15 @@ const roleNames: Record<string, string> = {
   therapist: '治疗师',
   doctor: '医生',
   supervisor: '主管',
+  front_desk: '前台',
 }
 
 const navItems = [
-  { path: '/', label: '今日排台', icon: CalendarDays, roles: null },
+  { path: '/', label: '今日排台', icon: CalendarDays, roles: ['nurse', 'therapist', 'doctor', 'supervisor'] },
+  { path: '/front-desk', label: '前台工作台', icon: ArrowLeftRight, roles: ['front_desk', 'supervisor'] },
   { path: '/exceptions', label: '异常列表', icon: AlertTriangle, roles: ['supervisor'] },
   { path: '/unverified', label: '未核销清单', icon: FileCheck, roles: ['supervisor'] },
+  { path: '/review-summary', label: '复核记录汇总', icon: FileText, roles: ['supervisor'] },
 ]
 
 export default function Layout() {

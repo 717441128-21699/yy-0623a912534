@@ -9,6 +9,8 @@ import PostOp from "@/pages/PostOp";
 import ExceptionReport from "@/pages/ExceptionReport";
 import ExceptionList from "@/pages/ExceptionList";
 import UnverifiedList from "@/pages/UnverifiedList";
+import FrontDesk from "@/pages/FrontDesk";
+import ReviewSummary from "@/pages/ReviewSummary";
 
 export default function App() {
   return (
@@ -24,6 +26,8 @@ export default function App() {
           <Route path="/patient/:id/exception" element={<ExceptionReport />} />
           <Route path="/exceptions" element={<ExceptionList />} />
           <Route path="/unverified" element={<UnverifiedList />} />
+          <Route path="/front-desk" element={<FrontDesk />} />
+          <Route path="/review-summary" element={<ReviewSummary />} />
         </Route>
       </Routes>
     </Router>

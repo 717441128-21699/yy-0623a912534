@@ -11,7 +11,7 @@ export type AppointmentStatus =
 export interface Staff {
   id: string
   name: string
-  role: 'nurse' | 'therapist' | 'doctor' | 'supervisor'
+  role: 'nurse' | 'therapist' | 'doctor' | 'supervisor' | 'front_desk'
   room: Room
   avatar: string
   password: string
